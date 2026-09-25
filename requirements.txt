@@ -1,0 +1,8 @@
+# CPU-only PyTorch is enough: the encoder is frozen, only ~27M-parameter heads are trained.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.0
+transformers==5.17.0
+safetensors==0.8.0
+laya==0.3.4
+numpy==2.5.3
+huggingface_hub==1.33.0

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+cache/
+checkpoints/
+build/
+dist/
+*.onnx
+*.onnx.data
+*.pt
+*.safetensors
+checkpoints_old/
+logs/
