@@ -64,6 +64,8 @@
   .cols.tight{gap:10px;margin-top:4px}
   .colhead{font-size:12px;color:var(--ink2);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px}
   .bar.muted .fill{background:var(--ink2)}
+  #routing .bar{grid-template-columns:260px 1fr 52px}
+  @media (max-width:560px){#routing .bar{grid-template-columns:150px 1fr 52px}}
   .check{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink)}
   .check input{width:auto}
   details summary{cursor:pointer;color:var(--accent);font-size:13px;margin-top:8px}
