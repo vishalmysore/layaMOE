@@ -2,7 +2,7 @@
 features (see cache_features.py). The encoder stays frozen and shared.
 
     python scripts/train_expert.py --expert safety
-    python scripts/train_expert.py --expert customer_ops --epochs 3 --lr 2e-4
+    python scripts/train_expert.py --expert customer_ops --epochs 6 --lr 6e-4
 
 Loss: cross-entropy over the options, plus the ranked probability score on score questions (it
 penalises mass far from the right level, which targets the base model's habit of answering the
@@ -100,8 +100,8 @@ def fit_temperatures(out):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--expert", required=True)
-    ap.add_argument("--epochs", type=int, default=3)
-    ap.add_argument("--lr", type=float, default=2e-4)
+    ap.add_argument("--epochs", type=int, default=6)
+    ap.add_argument("--lr", type=float, default=6e-4)
     ap.add_argument("--bs", type=int, default=32)
     ap.add_argument("--rps", type=float, default=1.0, help="weight of the ranked probability score on score questions")
     ap.add_argument("--seed", type=int, default=0)

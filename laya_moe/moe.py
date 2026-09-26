@@ -6,8 +6,9 @@
     out["expert"], out["routing"]                     # which head answered and why
 
 Routing is sequence-level (once per request, not per token): the base laya-typed-decisions model
-answers one choice question, "which kind of input is this?". If its top option is an expert with
-probability >= threshold, that expert's head answers; otherwise the untouched base head does.
+answers one choice question, "what kind of text is this?", over fine-grained kinds (agent action,
+public comment, support ticket, ...). If the top kind maps to a loaded expert and its probability is
+>= threshold, that expert's head answers; otherwise the untouched base head does.
 """
 import numpy as np
 import torch
@@ -16,17 +17,27 @@ from laya.common import QTYPES, confidence_from_probs, temp_bucket
 
 from .core import BASE_MODEL, encode, load_base, load_expert, make_item, to_internal
 
-# Router options: one per expert plus "other". Descriptions are what the base model scores.
+# Router: the base model picks what *kind* of text this is from fine-grained options (much easier for it
+# than broad "which expert" options); each kind maps to an expert, anything unmapped goes to "general".
 ROUTER_OPTIONS = {
-    "safety": "An AI agent's planned action on systems or data, or a user comment that may need moderation",
-    "customer_ops": "A customer support ticket, a parcel delivery problem, or a workplace email to triage",
-    "other": "Anything else",
+    "agent_action": "A plan or command an AI agent wants to run on software, data or infrastructure",
+    "public_comment": "A comment posted by a reader on a blog, forum or social media",
+    "support_ticket": "A customer asking a software company for help with its product",
+    "delivery_issue": "A problem with shipping or delivering a parcel",
+    "work_email": "An email between colleagues at work",
+    "it_alert": "A monitoring alert or report about an IT system incident",
+    "patient_message": "A message from a patient to a doctor or clinic",
+    "product_review": "A customer review of a product they bought",
+    "sales_inquiry": "A potential customer contacting a sales team",
+    "other": "Something else",
 }
-ROUTER_QUESTION = {"type": "choice", "instructions": "What kind of input is this?", "criteria": ROUTER_OPTIONS}
+ROUTER_EXPERTS = {"agent_action": "safety", "public_comment": "safety",
+                  "support_ticket": "customer_ops", "delivery_issue": "customer_ops", "work_email": "customer_ops"}
+ROUTER_QUESTION = {"type": "choice", "instructions": "What kind of text is this?", "criteria": ROUTER_OPTIONS}
 
 
 class MoEAgent:
-    def __init__(self, experts=(), base_model=BASE_MODEL, threshold=0.6, router_options=None):
+    def __init__(self, experts=(), base_model=BASE_MODEL, threshold=0.3):
         self.base = load_base(base_model)
         self.tok, self.cfg = self.base.tok, self.base.cfg
         self.threshold = threshold
@@ -34,8 +45,7 @@ class MoEAgent:
         for path in experts:
             head, meta = load_expert(path, self.base.model)
             self.experts[meta["expert"]] = (head, meta)
-        opts = router_options or {k: v for k, v in ROUTER_OPTIONS.items() if k in self.experts or k == "other"}
-        self.router_q = {**ROUTER_QUESTION, "criteria": opts}
+        self.router_q = ROUTER_QUESTION
 
     # -- routing -------------------------------------------------------------------------------
     @torch.no_grad()
@@ -43,7 +53,8 @@ class MoEAgent:
         a = self.base.system_one(state, {"route": self.router_q})["answers"]["route"]
         probs = a["probabilities"]
         top = max(probs, key=probs.get)
-        chosen = top if (top in self.experts and probs[top] >= self.threshold) else "general"
+        exp = ROUTER_EXPERTS.get(top)
+        chosen = exp if (exp in self.experts and probs[top] >= self.threshold) else "general"
         return chosen, {"probabilities": probs, "top": top, "confidence": a["confidence"]}
 
     # -- answering -----------------------------------------------------------------------------

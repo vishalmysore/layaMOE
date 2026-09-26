@@ -1,0 +1,44 @@
+name: Deploy demo page to GitHub Pages
+
+# Only assembles the static page (HTML/JS + ONNX Runtime Web, a few MB). No training and no model
+# conversion happen here: the model files are built locally with scripts/export_web.py and hosted on
+# Hugging Face (VishalMysore/laya-moe-web), which the page loads directly.
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "scripts/prepare_site.mjs", "package.json", "package-lock.json", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node scripts/prepare_site.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

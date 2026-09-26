@@ -6,7 +6,7 @@ For every case it reports three answers:
   moe      whatever the router picked (the real system)
 
     python scripts/eval_moe.py
-    python scripts/eval_moe.py --experts checkpoints/safety checkpoints/customer_ops --threshold 0.6 --out results/moe.json
+    python scripts/eval_moe.py --experts checkpoints/safety checkpoints/customer_ops --threshold 0.3 --out results/moe.json
 """
 import argparse, glob, json, os, sys, time
 
@@ -27,7 +27,7 @@ def correct(spec, ans, want):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--experts", nargs="*", default=sorted(glob.glob(os.path.join(ROOT, "checkpoints", "*"))))
-    ap.add_argument("--threshold", type=float, default=0.6)
+    ap.add_argument("--threshold", type=float, default=0.3)
     ap.add_argument("--out")
     args = ap.parse_args()
 

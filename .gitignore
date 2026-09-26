@@ -11,3 +11,6 @@ dist/
 *.safetensors
 checkpoints_old/
 logs/
+node_modules/
+.claude/
+dist/

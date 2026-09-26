@@ -6,3 +6,7 @@ safetensors==0.8.0
 laya==0.3.4
 numpy==2.5.3
 huggingface_hub==1.33.0
+# ONNX export for the browser build (scripts/export_web.py)
+onnx==1.23.0
+onnxscript==0.7.2
+onnxruntime==1.25.0

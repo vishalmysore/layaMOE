@@ -1,0 +1,15 @@
+{
+  "name": "laya-moe-web",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "Laya mixture-of-experts demo in the browser with ONNX Runtime Web",
+  "type": "module",
+  "scripts": {
+    "prepare-site": "node scripts/prepare_site.mjs"
+  },
+  "dependencies": {
+    "@huggingface/tokenizers": "0.2.0",
+    "onnxruntime-web": "1.30.0"
+  }
+}
