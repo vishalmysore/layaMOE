@@ -6,11 +6,11 @@
 
 ---
 
-## The problem
+## Starting point: Laya
 
 [Laya](https://huggingface.co/convaiinnovations/laya-typed-decisions) is a decision model, not a chat model. You give it some text and a few typed questions (a *choice* between labeled options, a *score* on an ordered scale, or a *yes/no*), and it answers all of them in one forward pass with calibrated probabilities. It is a ModernBERT-large encoder plus a small two-layer decision head, 421M parameters in total, and small enough to run in a browser tab.
 
-On 108 hand-labeled cases across nine domains, `laya-typed-decisions` gets 59.6% of 312 answers right. The average hides a wide spread:
+As a general-purpose decision model, `laya-typed-decisions` answers 59.6% of 312 questions correctly on 108 hand-labeled cases across nine domains, with no domain-specific training. The per-domain numbers show where domain experts could add the most:
 
 | Domain | Correct |
 |---|---|
@@ -24,9 +24,9 @@ On 108 hand-labeled cases across nine domains, `laya-typed-decisions` gets 59.6%
 | sales leads | 41.7% |
 | **agent guardrails** | **39.6%** |
 
-The weakest domain, deciding whether an AI agent's planned action is destructive or needs a human, is also the one where a mistake costs the most. On score questions the model mostly answers the middle of the scale: it rated the risk of all twelve agent actions "Medium".
+Agent guardrails, deciding whether an AI agent's planned action is destructive or needs a human, has the most room to grow and is also where extra accuracy is worth the most. Score questions are another opportunity: without domain context the model tends toward the middle of the scale, and it rated the risk of all twelve agent actions "Medium".
 
-The obvious fix is to fine-tune on guardrail data. But one fine-tuned model per domain means shipping 421M parameters per domain, and a single model fine-tuned on everything can lose what it was good at. This project tries something in between.
+One way to specialise it is to fine-tune a copy for each domain, but that means shipping 421M parameters per domain, and a single model fine-tuned on everything risks losing what it already does well. This project tries something in between: keep Laya exactly as it is and add small experts beside it.
 
 ## Why not a "real" mixture of experts?
 
@@ -66,7 +66,7 @@ Because the encoder never changes, its output for each training example only has
 
 **Data.** There is no public dataset of labeled agent actions, so `gen_train_data.py` builds synthetic cases from slots. For guardrails the slots are the action (read, write, delete, send, change a security setting, move money), the environment (production, staging, sandbox), and the safety net (a verified backup, versioning, `--dry-run`, or nothing). Each label is computed from the slots by an explicit rule: for example, "DELETE on production with no backup" is destructive, needs a human, and is critical risk, and the same command with `--dry-run` is safe. Question wordings are paraphrased and choice options are shuffled, so an expert learns the domain rather than one prompt. That gives 500 cases per domain and about 8,500 question items in total. Any generated case that shares a five-word sequence with an evaluation case is dropped.
 
-**Loss.** Cross-entropy, plus a ranked-probability term on score questions. The ranked-probability term penalises probability mass that sits far from the right level, which works against the base model's habit of answering the middle of every scale.
+**Loss.** Cross-entropy, plus a ranked-probability term on score questions. The ranked-probability term penalises probability mass that sits far from the right level, which pushes the expert away from the middle of the scale when the text calls for an extreme.
 
 **One lesson.** The head needs a much higher learning rate than full fine-tuning would. At 3e-5 it barely moved (validation 58% → 59% after four epochs), and I briefly suspected a bug. An overfitting test on 64 examples settled it: at 3e-4 the head fits them to 95% within 40 steps. The final runs use 6e-4 for six epochs:
 
