@@ -6,6 +6,8 @@
 
 **Live demo:** https://vishalmysore.github.io/layaMOE/ (runs in the browser with ONNX Runtime Web)
 
+**Compare it yourself:** [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/vishalmysore/layaMOE/blob/main/notebooks/laya_vs_moe_comparison.ipynb) runs the original Laya and the MoE side by side on the eval set, with per-domain results, paired significance tests, routing analysis and calibration ([notebooks/laya_vs_moe_comparison.ipynb](notebooks/laya_vs_moe_comparison.ipynb)).
+
 ## Why not a "real" MoE?
 
 Mixture-of-Experts LLMs (DeepSeek-V3, the nanoMoE tutorial, ...) replace every feed-forward block with N experts and a per-token top-k router, trained from scratch with load-balancing and router z-losses. For Laya that is the wrong fit:
@@ -140,6 +142,7 @@ print(out["expert"], out["routing"], out["answers"])
 | `scripts/eval_moe.py` | compare general / oracle-routed / routed answers on `data/eval` |
 | `scripts/export_web.py` | ONNX export (encoder + heads), int8 quantization, check against PyTorch, packaging |
 | `scripts/upload_hf.py` | upload experts or the browser build to Hugging Face |
+| `notebooks/laya_vs_moe_comparison.ipynb` | Colab notebook: original Laya vs MoE on `data/eval` (stats, routing, calibration) |
 | `web/`, `scripts/prepare_site.mjs` | the browser demo and its site builder |
 | `results/moe_eval.json` | every eval answer (general, oracle, moe) with routing |
 | `data/eval/` | 108 hand-labeled cases in 9 domains (from layaForWeb) |
