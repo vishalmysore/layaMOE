@@ -148,7 +148,7 @@ print(out["expert"], out["routing"], out["answers"])
 | `data/eval/` | 108 hand-labeled cases in 9 domains (from layaForWeb) |
 | `data/train/` | generated training data |
 
-Article: [docs/article.md](docs/article.md).
+Articles: [docs/article.md](docs/article.md) · [Laya Vs Jev - Laya Deep Dive](docs/laya-vs-jev-laya-deep-dive.md) (Laya vs Jev internals, plus a full re-run of the comparison notebook with screenshots).
 
 Not in git: `.venv/`, `cache/` (encoder features), `checkpoints/` (expert weights, on Hugging Face at [VishalMysore/layaMOE](https://huggingface.co/VishalMysore/layaMOE)), `build/` (browser files, at [VishalMysore/laya-moe-web](https://huggingface.co/VishalMysore/laya-moe-web)).
 
