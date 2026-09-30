@@ -123,6 +123,7 @@ question per pair ("Do question1 and question2 ask the same thing?"), threshold 
 | layaMOE, trained router (1,272 general / 207 safety / 21 customer_ops) | 76.9% | 0.764 | 0.782 | 0.747 |
 | safety head on every pair | 73.8% | 0.714 | 0.787 | 0.653 |
 | customer_ops head on every pair | 74.0% | 0.731 | 0.758 | 0.705 |
+| **Laya + LoRA on the top 4 encoder layers** (`notebooks/laya_lora_qqp.ipynb`) | **78.0%** | **0.791** | 0.752 | 0.835 |
 
 For context, a public write-up using the same recipe (1,500 balanced QQP validation pairs, `random_state=42`)
 reported GLiNER2.5-Decide at 69.7% zero-shot and 80.3% after LoRA fine-tuning, and Jev at 79.3%. Those numbers come
@@ -136,6 +137,16 @@ hardware, so read the comparison as indicative.
   (`scripts/gen_qqp_data.py`, eval questions excluded; 6 epochs, lr 6e-4) never beat the base head on its validation
   split (77.9% base, 75.7-77.1% after each epoch), so the training script kept the base weights. Closing the last
   points on a task like this likely needs the encoder to adapt too (LoRA), which is the route the Decide write-up took.
+- **LoRA on the top encoder layers helps, a little.** [`notebooks/laya_lora_qqp.ipynb`](notebooks/laya_lora_qqp.ipynb)
+  keeps the embeddings and bottom 24 layers frozen, adds rank-16 LoRA to the top 4 layers (1.0M parameters) and trains
+  them with a copy of the head on the same 1,500 train pairs (3 epochs). Accuracy 77.2% → 78.0%, F1 0.767 → 0.791
+  (recall 75.2% → 83.5%, precision 78.3% → 75.2%). The accuracy change is not significant (fixed 62, broke 50,
+  McNemar p = 0.30). Decide gained 10.5 points from LoRA because it started from 69.7%; Laya starts much closer to the
+  ceiling of this recipe, and 78.0% is 1.3 points behind the published Jev figure. More training pairs or more
+  adapted layers are the obvious next runs (a free Colab T4 makes that minutes; this run took ~75 min on 2 CPU cores,
+  see `notebooks/laya_lora_qqp_executed.ipynb` and `results/qqp_lora.json`).
+- Because only the top layers change, a LoRA expert still fits the MoE: run the shared bottom 24 layers once, then
+  each expert's top 4 layers and head.
 - Latency on this 2-vCPU machine: 447 ms per pair, one pair per request, MoE with trained router (one encoder pass).
 - The best threshold on this slice is 0.45 (78.1%), so the default 0.5 is close; that threshold was picked on the
   eval slice itself and is not a fair headline number.
@@ -215,6 +226,7 @@ print(out["expert"], out["routing"], out["answers"])
 | `scripts/export_web.py` | ONNX export (encoder + heads), int8 quantization, check against PyTorch, packaging |
 | `scripts/upload_hf.py` | upload experts or the browser build to Hugging Face |
 | `notebooks/laya_vs_moe_comparison.ipynb` | Colab notebook: original Laya vs MoE on `data/eval` (stats, routing, calibration) |
+| `notebooks/laya_lora_qqp.ipynb` | Colab notebook: LoRA on the top encoder layers + head, trained and scored on QQP |
 | `web/`, `scripts/prepare_site.mjs` | the browser demo and its site builder |
 | `results/moe_eval.json` | every eval answer (general, oracle, moe) with routing |
 | `results/router_eval.json` | trained-router eval: every answer and routing decision, latency |
@@ -243,7 +255,7 @@ GitHub Actions (`.github/workflows/pages.yml`) only assembles and deploys the pa
 ## Next
 
 - ~~Train the router instead of prompting it~~ (done, see "Trained router"); next: port it to the browser build.
-- More and more varied training data; LoRA on the top encoder layers on a GPU (head-only training did not move QQP).
+- More and more varied training data; LoRA experts on the top encoder layers (QQP: +0.8 points with 1,500 pairs; try more data and layers on a GPU).
 - More experts (IT incidents, sales leads).
 
 ## License

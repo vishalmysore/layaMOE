@@ -15,3 +15,5 @@ node_modules/
 .claude/
 dist/
 data/train/pairs/
+notebooks/laya_lora_qqp/
+laya_lora_qqp.zip

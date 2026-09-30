@@ -1,0 +1,76 @@
+{
+ "base_model": "convaiinnovations/laya-typed-decisions",
+ "lora_layers": [
+  24,
+  25,
+  26,
+  27
+ ],
+ "targets": [
+  "attn.Wqkv",
+  "attn.Wo",
+  "mlp.Wi",
+  "mlp.Wo"
+ ],
+ "top_layers": 4,
+ "rank": 16,
+ "alpha": 32,
+ "dropout": 0.05,
+ "lr_lora": 0.0002,
+ "lr_head": 0.0002,
+ "epochs": 3,
+ "bs": 16,
+ "seed": 0,
+ "train_per_class": 750,
+ "eval_per_class": 750,
+ "history": [
+  {
+   "epoch": 0,
+   "val_acc": 0.7466666666666667
+  },
+  {
+   "epoch": 1,
+   "train_loss": 0.49668080427028516,
+   "val_acc": 0.7933333333333333
+  },
+  {
+   "epoch": 2,
+   "train_loss": 0.4901431179929663,
+   "val_acc": 0.7933333333333333
+  },
+  {
+   "epoch": 3,
+   "train_loss": 0.47814200507269966,
+   "val_acc": 0.8
+  }
+ ],
+ "eval": {
+  "zero_shot": {
+   "accuracy": 0.772,
+   "f1": 0.7673469387755101,
+   "precision": 0.7833333333333333,
+   "recall": 0.752,
+   "confusion": {
+    "tp": 564,
+    "fp": 156,
+    "fn": 186,
+    "tn": 594
+   }
+  },
+  "lora": {
+   "accuracy": 0.78,
+   "f1": 0.7914032869785081,
+   "precision": 0.7524038461538461,
+   "recall": 0.8346666666666667,
+   "confusion": {
+    "tp": 626,
+    "fp": 206,
+    "fn": 124,
+    "tn": 544
+   }
+  },
+  "fixed": 62,
+  "broke": 50,
+  "mcnemar_p": 0.2985928528328461
+ }
+}
