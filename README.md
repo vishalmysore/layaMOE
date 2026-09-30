@@ -111,6 +111,38 @@ Same 108 cases, PyTorch fp32, 2 CPU threads (`scripts/eval_router.py`, `results/
 moe = MoEAgent(experts=["checkpoints/safety", "checkpoints/customer_ops"], router="checkpoints/router")
 ```
 
+### Public benchmark: GLUE QQP duplicate questions
+
+To get a number that can sit next to published Jev and GLiNER2.5-Decide results, `scripts/eval_qqp.py` scores a
+balanced, stratified slice of the QQP validation split (750 duplicate + 750 not, `random_state=42`), one noul
+question per pair ("Do question1 and question2 ask the same thing?"), threshold 0.5, PyTorch fp32 on 2 CPU threads.
+
+| Model | Accuracy | F1 (duplicate) | Precision | Recall |
+|---|---|---|---|---|
+| **original laya-typed-decisions, zero-shot** | **77.2%** | 0.767 | 0.783 | 0.752 |
+| layaMOE, trained router (1,272 general / 207 safety / 21 customer_ops) | 76.9% | 0.764 | 0.782 | 0.747 |
+| safety head on every pair | 73.8% | 0.714 | 0.787 | 0.653 |
+| customer_ops head on every pair | 74.0% | 0.731 | 0.758 | 0.705 |
+
+For context, a public write-up using the same recipe (1,500 balanced QQP validation pairs, `random_state=42`)
+reported GLiNER2.5-Decide at 69.7% zero-shot and 80.3% after LoRA fine-tuning, and Jev at 79.3%. Those numbers come
+from a different run (possibly different rows if the sampling code differs), different prompts and different
+hardware, so read the comparison as indicative.
+
+- **Zero-shot, Laya is about 2 points behind that Jev figure and 7.5 points ahead of zero-shot Decide.**
+- **The MoE doesn't help here, as expected**: QQP isn't one of its domains. The router still sends 228 of 1,500 pairs to
+  an expert, which costs 0.3 points; the router has no "question pair" kind to recognise.
+- **Head-only fine-tuning didn't help either.** A `pairs` head trained on 1,500 QQP *train* pairs
+  (`scripts/gen_qqp_data.py`, eval questions excluded; 6 epochs, lr 6e-4) never beat the base head on its validation
+  split (77.9% base, 75.7-77.1% after each epoch), so the training script kept the base weights. Closing the last
+  points on a task like this likely needs the encoder to adapt too (LoRA), which is the route the Decide write-up took.
+- Latency on this 2-vCPU machine: 447 ms per pair, one pair per request, MoE with trained router (one encoder pass).
+- The best threshold on this slice is 0.45 (78.1%), so the default 0.5 is close; that threshold was picked on the
+  eval slice itself and is not a fair headline number.
+
+The QQP data is not committed; `gen_qqp_data.py` and `eval_qqp.py` download it from the Hugging Face hub
+(`nyu-mll/glue`).
+
 Expert training (validation split of the synthetic data, not the eval set):
 
 | Expert | Items | Base head | Expert | Settings |
@@ -178,12 +210,15 @@ print(out["expert"], out["routing"], out["answers"])
 | `scripts/gen_router_data.py` | template texts for the router's general kinds |
 | `scripts/train_router.py` | trained router over the answers' encoder states (no extra encoder pass) |
 | `scripts/eval_router.py` | original vs prompted router vs trained router: accuracy, routing, latency |
+| `scripts/eval_qqp.py` | GLUE QQP duplicate-question benchmark: original vs MoE vs individual heads |
+| `scripts/gen_qqp_data.py` | QQP train pairs for a duplicate-question head (eval questions excluded) |
 | `scripts/export_web.py` | ONNX export (encoder + heads), int8 quantization, check against PyTorch, packaging |
 | `scripts/upload_hf.py` | upload experts or the browser build to Hugging Face |
 | `notebooks/laya_vs_moe_comparison.ipynb` | Colab notebook: original Laya vs MoE on `data/eval` (stats, routing, calibration) |
 | `web/`, `scripts/prepare_site.mjs` | the browser demo and its site builder |
 | `results/moe_eval.json` | every eval answer (general, oracle, moe) with routing |
 | `results/router_eval.json` | trained-router eval: every answer and routing decision, latency |
+| `results/qqp_eval.json` | QQP slice: metrics, per-pair probabilities for every head, routing |
 | `data/eval/` | 108 hand-labeled cases in 9 domains (from layaForWeb) |
 | `data/train/` | generated training data |
 
@@ -208,7 +243,7 @@ GitHub Actions (`.github/workflows/pages.yml`) only assembles and deploys the pa
 ## Next
 
 - ~~Train the router instead of prompting it~~ (done, see "Trained router"); next: port it to the browser build.
-- More and more varied training data; LoRA on the top encoder layers on a GPU.
+- More and more varied training data; LoRA on the top encoder layers on a GPU (head-only training did not move QQP).
 - More experts (IT incidents, sales leads).
 
 ## License
