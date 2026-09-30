@@ -36,7 +36,24 @@ def make_item(tok, cfg, state, qdef):
     ids, markers = build_sequence(tok, state, q, cfg.get("max_len", 512), cfg.get("head_max_len", 192))
     if len(markers) != len(render_options(q)):
         raise ValueError("options exceed head_max_len")
-    return {"ids": ids, "markers": markers, "qtype": QTYPES[q["t"]]}
+    # the state sits between the second [SEP] (after the options) and the final [SEP]
+    seps = [i for i, t in enumerate(ids) if t == tok.sep_token_id]
+    span = (seps[1] + 1, seps[-1]) if len(seps) >= 3 and seps[-1] > seps[1] + 1 else (1, len(ids))
+    return {"ids": ids, "markers": markers, "qtype": QTYPES[q["t"]], "state_span": span}
+
+
+def state_pool(h, items):
+    """Mean of the encoder's hidden states over the state tokens, averaged over all rows of a request.
+
+    This is the trained router's input. It reuses the hidden states the answers need anyway, so
+    routing costs no extra encoder pass."""
+    vecs = [h[i, a:b].float().mean(0) for i, it in enumerate(items) for a, b in [it["state_span"]]]
+    return torch.stack(vecs).mean(0)
+
+
+def state_pool_rows(h, items):
+    """Per-row version of state_pool (one vector per item), used to build router training features."""
+    return torch.stack([h[i, a:b].float().mean(0) for i, it in enumerate(items) for a, b in [it["state_span"]]])
 
 
 def label_index(qdef, expected):

@@ -32,7 +32,12 @@ from laya_moe.moe import MoEAgent   # github.com/vishalmysore/layaMOE
 from huggingface_hub import snapshot_download
 d = snapshot_download("VishalMysore/layaMOE")
 moe = MoEAgent(experts=[f"{{d}}/safety", f"{{d}}/customer_ops"])
+# faster: trained router, one encoder pass per request
+moe = MoEAgent(experts=[f"{{d}}/safety", f"{{d}}/customer_ops"], router=f"{{d}}/router")
 ```
+
+`router/` is a small classifier (about 10K parameters) over the encoder states the answers already use; it picks
+the expert without a second encoder pass.
 
 Modified derivative of laya-typed-decisions (Apache-2.0, Copyright ConvAI Innovations); unofficial and not
 affiliated with ConvAI Innovations. The training data is synthetic; evaluate on your own cases before relying on it.
@@ -53,6 +58,11 @@ def main():
         with tempfile.TemporaryDirectory() as tmp:
             rows = ["| Expert | Domains | Validation acc. (base head -> expert) |", "|---|---|---|"]
             for d in sorted(glob.glob(str(ROOT / "checkpoints" / "*"))):
+                if (Path(d) / "router.json").exists():          # trained router (scripts/train_router.py)
+                    shutil.copytree(d, Path(tmp) / "router")
+                    continue
+                if not (Path(d) / "expert.json").exists():
+                    continue
                 meta = json.load(open(Path(d) / "expert.json"))
                 shutil.copytree(d, Path(tmp) / meta["expert"])
                 t = meta.get("train", {})

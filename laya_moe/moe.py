@@ -15,7 +15,7 @@ import torch
 
 from laya.common import QTYPES, confidence_from_probs, temp_bucket
 
-from .core import BASE_MODEL, encode, load_base, load_expert, make_item, to_internal
+from .core import BASE_MODEL, encode, load_base, load_expert, make_item, state_pool, to_internal
 
 # Router: the base model picks what *kind* of text this is from fine-grained options (much easier for it
 # than broad "which expert" options); each kind maps to an expert, anything unmapped goes to "general".
@@ -36,8 +36,27 @@ ROUTER_EXPERTS = {"agent_action": "safety", "public_comment": "safety",
 ROUTER_QUESTION = {"type": "choice", "instructions": "What kind of text is this?", "criteria": ROUTER_OPTIONS}
 
 
+def load_router(path, dim):
+    """Load a trained router (scripts/train_router.py)."""
+    import json, os
+    from safetensors.torch import load_file
+    import torch.nn as nn
+    meta = json.load(open(os.path.join(path, "router.json"), encoding="utf-8"))
+    head = nn.Module()
+    head.norm = nn.LayerNorm(dim)
+    head.drop = nn.Dropout(0.0)
+    head.out = nn.Linear(dim, len(meta["kinds"]))
+    head.load_state_dict(load_file(os.path.join(path, "router.safetensors")), strict=True)
+    head.eval()
+    return head, meta
+
+
 class MoEAgent:
-    def __init__(self, experts=(), base_model=BASE_MODEL, threshold=0.3):
+    """`router=None` uses the prompted router (one extra base-model question, i.e. a second encoder pass).
+    `router="checkpoints/router"` uses the trained router: it reads the encoder states the answers need
+    anyway, so the whole request is one encoder pass."""
+
+    def __init__(self, experts=(), base_model=BASE_MODEL, threshold=0.3, router=None):
         self.base = load_base(base_model)
         self.tok, self.cfg = self.base.tok, self.base.cfg
         self.threshold = threshold
@@ -46,6 +65,10 @@ class MoEAgent:
             head, meta = load_expert(path, self.base.model)
             self.experts[meta["expert"]] = (head, meta)
         self.router_q = ROUTER_QUESTION
+        self.router = None
+        if router:
+            dim = self.base.model.encoder.config.hidden_size
+            self.router, self.router_meta = load_router(router, dim)
 
     # -- routing -------------------------------------------------------------------------------
     @torch.no_grad()
@@ -58,12 +81,33 @@ class MoEAgent:
         return chosen, {"probabilities": probs, "top": top, "confidence": a["confidence"]}
 
     # -- answering -----------------------------------------------------------------------------
+    def _encode(self, state, questions):
+        ids = list(questions)
+        items = [make_item(self.tok, self.cfg, state, questions[q]) for q in ids]
+        return ids, items, encode(self.base.model.encoder, items, self.tok.pad_token_id)
+
+    @torch.no_grad()
+    def route_states(self, h, items):
+        """Trained router: pick a head from the encoder states already computed for the answers."""
+        z = self.router.out(self.router.norm(state_pool(h, items)))
+        p = torch.softmax(z, -1)
+        kinds = self.router_meta["kinds"]
+        probs = {k: round(float(v), 4) for k, v in zip(kinds, p)}
+        top = kinds[int(p.argmax())]
+        exp = self.router_meta["kind_to_expert"].get(top, "general")
+        thr = self.router_meta.get("threshold", 0.5)
+        chosen = exp if (exp in self.experts and probs[top] >= thr) else "general"
+        return chosen, {"probabilities": probs, "top": top, "confidence": probs[top]}
+
     @torch.no_grad()
     def answer_with(self, name, state, questions):
         """Answer with a named head ("general" = the base checkpoint's own head)."""
-        ids = list(questions)
-        items = [make_item(self.tok, self.cfg, state, questions[q]) for q in ids]
-        h, att, mpos, mmask, qt = encode(self.base.model.encoder, items, self.tok.pad_token_id)
+        ids, items, enc = self._encode(state, questions)
+        return self._answers(name, questions, ids, items, enc)
+
+    @torch.no_grad()
+    def _answers(self, name, questions, ids, items, enc):
+        h, att, mpos, mmask, qt = enc
         if name == "general":
             m = self.base.model
             x = h + m.type_emb(qt)[:, None, :]
@@ -99,7 +143,14 @@ class MoEAgent:
                                 "confidence": round(max(float(p[1]), 1 - float(p[1])), 4)}
         return answers
 
+    @torch.no_grad()
     def system_one(self, state, questions, expert=None):
+        if self.router is not None:
+            ids, items, enc = self._encode(state, questions)       # the only encoder pass
+            routing = None
+            if expert is None:
+                expert, routing = self.route_states(enc[0], items)
+            return {"expert": expert, "routing": routing, "answers": self._answers(expert, questions, ids, items, enc)}
         routing = None
         if expert is None:
             expert, routing = self.route(state)

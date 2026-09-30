@@ -79,6 +79,38 @@ Read these with care:
 - Individual answers can still be clearly wrong. Example (also a demo preset): for `DROP TABLE invoices` on production with no backup, the safety expert says destructive 65% but needs_human only 23%. Use the confidence values and keep a person in the loop.
 - Remaining weak spots: moderation and email routing (the router often reads them as "other"), and delivery `action` (43% even on the expert's own validation data).
 
+### Trained router: one encoder pass, better routing
+
+The prompted router asks the base model an extra question, which costs a second encoder pass per request, and it
+reads most moderation and email cases as "other". The trained router (`scripts/train_router.py`) is a small
+classifier (LayerNorm + linear, ~10K parameters) over the mean of the encoder's hidden states on the *state* tokens.
+Those hidden states are the ones the expert heads need anyway, so routing adds no encoder pass.
+
+It is trained on the experts' synthetic data plus template texts for the general kinds (`scripts/gen_router_data.py`:
+IT alerts, patient messages, product reviews, sales inquiries, other); nothing from `data/eval`.
+
+Same 108 cases, PyTorch fp32, 2 CPU threads (`scripts/eval_router.py`, `results/router_eval.json`):
+
+| | all | domains with an expert | without | routing to the right head | ms per case |
+|---|---|---|---|---|---|
+| original laya-typed-decisions | 59.6% | 55.2% | 66.7% | | 900 |
+| MoE, prompted router | 67.3% | 67.7% | 66.7% | 80.6% | 1,724 |
+| **MoE, trained router** | **67.9%** | **68.2%** | **67.5%** | **93.5%** | **892** |
+| MoE, oracle routing | 68.9% | 70.3% | 66.7% | 100% | |
+
+- **Speed:** the MoE now costs the same as plain Laya (one encoder pass), about 1.9x faster than with the prompted router.
+- **Routing:** content moderation goes to the safety expert 12/12 (was 3/12), and moderation accuracy rises from 75.0% to 83.3%.
+- **Accuracy:** +8.3 points over the original (fixed 44, broke 18, McNemar p = 0.0013). Against the prompted router the
+  difference (+0.6 points, fixed 12 / broke 10, p = 0.83) is not significant: the gain is speed and routing, not accuracy.
+- Email triage is still the weak spot (44.4%): 8 of 12 emails now reach customer_ops, but that expert's email answers
+  are worse than the general head's on several cases.
+- The general-kind templates were written with the eval domains in mind (as were the experts' generators), so judge
+  the router on your own data too.
+
+```python
+moe = MoEAgent(experts=["checkpoints/safety", "checkpoints/customer_ops"], router="checkpoints/router")
+```
+
 Expert training (validation split of the synthetic data, not the eval set):
 
 | Expert | Items | Base head | Expert | Settings |
@@ -114,6 +146,9 @@ python scripts/train_expert.py --expert safety --lr 6e-4 --epochs 6
 python scripts/cache_features.py --expert customer_ops
 python scripts/train_expert.py --expert customer_ops --lr 6e-4 --epochs 6
 python scripts/eval_moe.py                           # general vs oracle routing vs real routing
+python scripts/gen_router_data.py                    # data/train/router/<kind>.jsonl
+python scripts/train_router.py                       # trained router -> checkpoints/router (~20 min on CPU, mostly encoding)
+python scripts/eval_router.py                        # original vs prompted router vs trained router, with latency
 ```
 
 Use it from Python:
@@ -140,11 +175,15 @@ print(out["expert"], out["routing"], out["answers"])
 | `scripts/train_expert.py` | train one expert head from the cache, keep the best epoch, fit temperatures |
 | `scripts/eval_baseline.py` | score a plain Laya checkpoint on `data/eval` |
 | `scripts/eval_moe.py` | compare general / oracle-routed / routed answers on `data/eval` |
+| `scripts/gen_router_data.py` | template texts for the router's general kinds |
+| `scripts/train_router.py` | trained router over the answers' encoder states (no extra encoder pass) |
+| `scripts/eval_router.py` | original vs prompted router vs trained router: accuracy, routing, latency |
 | `scripts/export_web.py` | ONNX export (encoder + heads), int8 quantization, check against PyTorch, packaging |
 | `scripts/upload_hf.py` | upload experts or the browser build to Hugging Face |
 | `notebooks/laya_vs_moe_comparison.ipynb` | Colab notebook: original Laya vs MoE on `data/eval` (stats, routing, calibration) |
 | `web/`, `scripts/prepare_site.mjs` | the browser demo and its site builder |
 | `results/moe_eval.json` | every eval answer (general, oracle, moe) with routing |
+| `results/router_eval.json` | trained-router eval: every answer and routing decision, latency |
 | `data/eval/` | 108 hand-labeled cases in 9 domains (from layaForWeb) |
 | `data/train/` | generated training data |
 
@@ -168,7 +207,7 @@ GitHub Actions (`.github/workflows/pages.yml`) only assembles and deploys the pa
 
 ## Next
 
-- Train the router instead of prompting it (moderation and email routing are the weak spots).
+- ~~Train the router instead of prompting it~~ (done, see "Trained router"); next: port it to the browser build.
 - More and more varied training data; LoRA on the top encoder layers on a GPU.
 - More experts (IT incidents, sales leads).
 
